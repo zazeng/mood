@@ -9,6 +9,7 @@ use dirs;
 use rusqlite::{Connection, Result};
 
 static DEFAULT_DB_NAME: &str = "mood.db";
+static MOOD_RANGE: RangeInclusive<f32> = 0.0..=10.0;
 
 #[derive(Parser, Debug)]
 struct ArgumentParser {
@@ -47,6 +48,33 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let conn = Connection::open(&dbpath)?;
 
+    let mood = Mood {
+        timestamp,
+        value: args.value,
+        message: args.message,
+    };
+
+    match insert(&conn, &mood) {
+        Ok(n_inserts) => {
+            let mut msg = format!("Inserted {} rows. ", n_inserts);
+            if args.value < 5.0 {
+                msg.push_str("Cheer up Negative Nancy");
+            } else if args.value > 5.0 {
+                msg.push_str("Chill out Positive Pete");
+            } else {
+                msg.push_str("To feel nothing so as to feel anything. Such a shame")
+            }
+            println!("{}", msg)
+        }
+        Err(err) => {
+            println!("Rusqlite insertion error: {}", err)
+        }        
+    };
+
+    Ok(())
+}
+
+fn insert(conn: &Connection, mood: &Mood) -> Result<usize, rusqlite::Error> {
     conn.execute(
         "CREATE TABLE if NOT EXISTS mood (
             id         INTEGER PRIMARY KEY,
@@ -56,23 +84,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         )",
         (),
     )?;
-    let mood = Mood {
-        timestamp,
-        value: args.value,
-        message: args.message,
-    };
-    match conn.execute(
+    conn.execute(
         "INSERT INTO mood (timestamp, value, message) VALUES (?1, ?2, ?3)",
         (&mood.timestamp, &mood.value, &mood.message),
-    ) {
-        Ok(updated) => println!("{} row inserted", updated),
-        Err(err) => println!("update failed: {}", err),
-    };
-
-    Ok(())
+    )
 }
-
-static MOOD_RANGE: RangeInclusive<f32> = 0.0..=10.0;
 
 fn value_in_range(s: &str) -> Result<f32, String> {
     let value: f32 = s.parse().map_err(|_| format!("`{}` is non-numeric", s))?;
@@ -105,3 +121,4 @@ fn validate_dbpath(path: &str) -> Result<String, String> {
         None => Err(format!("invalid dbpath. `.db` extension not found")),
     }
 }
+
